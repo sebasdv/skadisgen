@@ -92,12 +92,12 @@ function dxfSlot(slot, boardHeight) {
     '  8', 'RANURAS',
     ' 90', '4',
     ' 70', '1',
-    // P1 with bulge to P2 (bottom semicircle, CW = -1)
-    ' 10', fmt(p1x), ' 20', fmt(p1y), ' 42', '-1.0',
+    // P1 with bulge to P2 (bottom semicircle, CCW = +1, bulges downward)
+    ' 10', fmt(p1x), ' 20', fmt(p1y), ' 42', '1.0',
     // P2, no bulge to P3
     ' 10', fmt(p2x), ' 20', fmt(p2y), ' 42', '0.0',
-    // P3 with bulge to P4 (top semicircle, CW = -1)
-    ' 10', fmt(p3x), ' 20', fmt(p3y), ' 42', '-1.0',
+    // P3 with bulge to P4 (top semicircle, CCW = +1, bulges upward)
+    ' 10', fmt(p3x), ' 20', fmt(p3y), ' 42', '1.0',
     // P4, no bulge to P1
     ' 10', fmt(p4x), ' 20', fmt(p4y), ' 42', '0.0',
   ].join('\n');
