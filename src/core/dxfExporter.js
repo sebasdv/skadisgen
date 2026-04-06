@@ -46,7 +46,7 @@ function dxfContorno(width, height) {
 
 // Build a single slot as LWPOLYLINE with bulge arcs.
 // The slot is a stadium (oblong) shape: the long axis is vertical.
-// w = 5 (horizontal), h = 15 (vertical), rx = 2.5
+// w = 5 (horizontal), h = 10 (vertical), rx = 2.5
 // Center at (cx, cy) in mm, with DXF Y = height - y_top - h/2 flipping applied.
 function dxfSlot(slot, boardHeight) {
   const { x, y, w, h, rx } = slot;

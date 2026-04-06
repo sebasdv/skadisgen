@@ -61,12 +61,12 @@ export default function ControlPanel({ width, height, setWidth, setHeight, slots
           <span className="stat-value">{stats.totalSlots}</span>
         </div>
         <div className="stat-row">
-          <span className="stat-label">Cols A / B</span>
-          <span className="stat-value">{stats.colsA} / {stats.colsB}</span>
+          <span className="stat-label">Columnas</span>
+          <span className="stat-value">{stats.cols}</span>
         </div>
         <div className="stat-row">
-          <span className="stat-label">Filas A / B</span>
-          <span className="stat-value">{stats.rowsA} / {stats.rowsB}</span>
+          <span className="stat-label">Filas</span>
+          <span className="stat-value">{stats.rows}</span>
         </div>
       </section>
 
