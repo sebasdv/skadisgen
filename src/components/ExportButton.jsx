@@ -16,7 +16,7 @@ export default function ExportButton({ slots, width, height }) {
       onClick={handleClick}
       disabled={slots.length === 0}
     >
-      {confirmed ? 'Descargado ✓' : 'Exportar DXF'}
+      {confirmed ? 'Downloaded ✓' : 'Export DXF'}
     </button>
   );
 }

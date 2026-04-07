@@ -23,9 +23,9 @@ export default function ControlPanel({ width, height, setWidth, setHeight, slots
       <div className="panel-logo">SKADIS<span>GEN</span></div>
 
       <section className="panel-section">
-        <h2 className="section-title">Dimensiones</h2>
+        <h2 className="section-title">Dimensions</h2>
         <label className="field">
-          <span className="field-label">Ancho (mm)</span>
+          <span className="field-label">Width (mm)</span>
           <input
             ref={widthInputRef}
             type="number"
@@ -39,7 +39,7 @@ export default function ControlPanel({ width, height, setWidth, setHeight, slots
           />
         </label>
         <label className="field">
-          <span className="field-label">Alto (mm)</span>
+          <span className="field-label">Height (mm)</span>
           <input
             ref={heightInputRef}
             type="number"
@@ -55,9 +55,9 @@ export default function ControlPanel({ width, height, setWidth, setHeight, slots
       </section>
 
       <section className="panel-section">
-        <h2 className="section-title">Información</h2>
+        <h2 className="section-title">Info</h2>
         <div className="stat-row">
-          <span className="stat-label">Total ranuras</span>
+          <span className="stat-label">Total slots</span>
           <span className="stat-value">{stats.totalSlots}</span>
         </div>
         <div className="stat-row">
@@ -65,13 +65,13 @@ export default function ControlPanel({ width, height, setWidth, setHeight, slots
           <span className="stat-value">{stats.colsA} / {stats.colsB}</span>
         </div>
         <div className="stat-row">
-          <span className="stat-label">Filas A / B</span>
+          <span className="stat-label">Rows A / B</span>
           <span className="stat-value">{stats.rowsA} / {stats.rowsB}</span>
         </div>
       </section>
 
       <section className="panel-section">
-        <h2 className="section-title">Exportar</h2>
+        <h2 className="section-title">Export</h2>
         <ExportButton slots={slots} width={width} height={height} />
       </section>
     </aside>
