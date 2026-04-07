@@ -113,7 +113,6 @@ export function generateDXF(slots, boardWidth, boardHeight) {
     dxfHeader(boardWidth, boardHeight) +
     dxfTables() +
     '  0\nSECTION\n  2\nENTITIES\n' +
-    '  0\n' +
     entities +
     '\n  0\nENDSEC\n  0\nEOF\n';
 
