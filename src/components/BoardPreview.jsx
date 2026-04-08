@@ -109,15 +109,15 @@ function BoardPreviewSVG({ width, height, slots }) {
 }
 
 export default function BoardPreview({ width, height, slots }) {
-  const [mode, setMode] = useState('iso');
+  const [mode, setMode] = useState('3d');
 
   return (
     <div className="board-preview">
       <div className="view-toggle">
-        <button className={`view-toggle-btn ${mode === '2d'  ? 'active' : ''}`} onClick={() => setMode('2d')}>2D</button>
-        <button className={`view-toggle-btn ${mode === 'iso' ? 'active' : ''}`} onClick={() => setMode('iso')}>ISO</button>
+        <button className={`view-toggle-btn ${mode === '2d' ? 'active' : ''}`} onClick={() => setMode('2d')}>2D</button>
+        <button className={`view-toggle-btn ${mode === '3d' ? 'active' : ''}`} onClick={() => setMode('3d')}>3D</button>
       </div>
-      {mode === 'iso'
+      {mode === '3d'
         ? <BoardISOView width={width} height={height} slots={slots} />
         : <BoardPreviewSVG width={width} height={height} slots={slots} />
       }

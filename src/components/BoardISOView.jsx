@@ -4,44 +4,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 
 const BOARD_DEPTH = 5;
 const CORNER_R    = 9;
-const BG          = 0xF0F2F5; // matches --dec-dark-bg
-
-const VERT = `
-  precision highp float;
-  attribute vec3 position;
-  void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }
-`;
-
-const FRAG = `
-  precision highp float;
-  uniform sampler2D tColor;
-  uniform sampler2D tNormal;
-  uniform sampler2D tDepth;
-  uniform vec2 res;
-  vec3 norm(vec2 uv) { return texture2D(tNormal, uv).rgb * 2.0 - 1.0; }
-  float dep(vec2 uv)  { return texture2D(tDepth,  uv).r; }
-  void main() {
-    vec2 uv = gl_FragCoord.xy / res;
-    vec2 p  = 1.0 / res;
-    float d[9];
-    d[0]=dep(uv+vec2(-p.x,-p.y)); d[1]=dep(uv+vec2(0.0,-p.y)); d[2]=dep(uv+vec2(p.x,-p.y));
-    d[3]=dep(uv+vec2(-p.x, 0.0));                               d[5]=dep(uv+vec2(p.x, 0.0));
-    d[6]=dep(uv+vec2(-p.x, p.y)); d[7]=dep(uv+vec2(0.0, p.y)); d[8]=dep(uv+vec2(p.x, p.y));
-    float Gx = -d[0]-2.0*d[3]-d[6] + d[2]+2.0*d[5]+d[8];
-    float Gy = -d[0]-2.0*d[1]-d[2] + d[6]+2.0*d[7]+d[8];
-    float edgeD = sqrt(Gx*Gx + Gy*Gy);
-    vec3 n[9];
-    n[0]=norm(uv+vec2(-p.x,-p.y)); n[1]=norm(uv+vec2(0.0,-p.y)); n[2]=norm(uv+vec2(p.x,-p.y));
-    n[3]=norm(uv+vec2(-p.x, 0.0));                                n[5]=norm(uv+vec2(p.x, 0.0));
-    n[6]=norm(uv+vec2(-p.x, p.y)); n[7]=norm(uv+vec2(0.0, p.y)); n[8]=norm(uv+vec2(p.x, p.y));
-    vec3 nGx = -n[0]-2.0*n[3]-n[6] + n[2]+2.0*n[5]+n[8];
-    vec3 nGy = -n[0]-2.0*n[1]-n[2] + n[6]+2.0*n[7]+n[8];
-    float edgeN = sqrt(dot(nGx,nGx)+dot(nGy,nGy));
-    float edge  = step(0.25, max(edgeD * 30.0, edgeN));
-    vec4 color  = texture2D(tColor, uv);
-    gl_FragColor = mix(color, vec4(0.0,0.0,0.0,1.0), edge);
-  }
-`;
+const BG          = 0xF0F2F5;
 
 function buildBoardGeo(w, h) {
   const r = CORNER_R;
@@ -81,180 +44,205 @@ function buildSlotsGeo(slots, boardH) {
   return merged;
 }
 
-// Isometric camera: 45° azimuth, true isometric elevation (~35.26°)
-// Board is in XY plane, extruded in +Z
-function updateCamera(camera, boardW, boardH, containerW, containerH) {
-  // frustum: fit the board with some padding, correct aspect
-  const aspect = containerW / containerH;
-  const fitW   = boardW * 1.6;
-  const fitH   = boardH * 1.6;
-  // pick the view size that fits both dimensions
-  let vH = fitH;
-  if (fitW / aspect > fitH) vH = fitW / aspect;
-  const vW = vH * aspect;
-
-  camera.left   = -vW / 2;
-  camera.right  =  vW / 2;
-  camera.top    =  vH / 2;
-  camera.bottom = -vH / 2;
-  camera.near   = -999999;
-  camera.far    =  999999;
-
-  // position: true isometric angles (120° apart on each axis)
-  const cx = boardW / 2;
-  const cy = boardH / 2;
-  const cz = BOARD_DEPTH / 2;
-  const dist = Math.max(boardW, boardH) * 2.5;
-  // ISO: camera comes from front-right-top
-  camera.position.set(cx + dist, cy - dist, cz + dist);
-  camera.up.set(0, 0, 1);
-  camera.lookAt(cx, cy, cz);
-  camera.updateProjectionMatrix();
-}
-
 export default function BoardISOView({ width, height, slots }) {
-  const canvasRef   = useRef(null);
+  const mountRef    = useRef(null);
   const stateRef    = useRef(null);
-  const geomTimerRef = useRef(null);
+  const geomTimer   = useRef(null);
 
-  // ── Init renderer (runs once) ──────────────────────────────────────────────
+  // ── Init (once) ────────────────────────────────────────────────────────────
   useEffect(() => {
-    const canvas    = canvasRef.current;
-    const container = canvas.parentElement;
+    const container = mountRef.current;
 
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(1, 1, false);
+    renderer.setClearColor(BG);
+    renderer.setSize(container.clientWidth || 1, container.clientHeight || 1);
+    container.appendChild(renderer.domElement);
 
-    // Scene A: color pass (board white, slots bg-colored)
-    const sceneA   = new THREE.Scene();
-    sceneA.background = new THREE.Color(BG);
-    const matBoard = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const matSlot  = new THREE.MeshBasicMaterial({ color: BG });
-    const boardMesh  = new THREE.Mesh(new THREE.BufferGeometry(), matBoard);
-    const slotsMesh  = new THREE.Mesh(new THREE.BufferGeometry(), matSlot);
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(BG);
+
+    // Lighting
+    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+    dir.position.set(1, 1, 2);
+    scene.add(dir);
+    const dir2 = new THREE.DirectionalLight(0xffffff, 0.3);
+    dir2.position.set(-1, -0.5, 1);
+    scene.add(dir2);
+
+    // Materials
+    const matBoard = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 30 });
+    const matSlot  = new THREE.MeshPhongMaterial({ color: BG,       shininess: 0  });
+
+    const boardMesh = new THREE.Mesh(new THREE.BufferGeometry(), matBoard);
+    const slotsMesh = new THREE.Mesh(new THREE.BufferGeometry(), matSlot);
     slotsMesh.position.z = -1;
-    sceneA.add(boardMesh, slotsMesh);
+    scene.add(boardMesh, slotsMesh);
 
-    // Scene B: normal pass (for edge detection)
-    const sceneB    = new THREE.Scene();
-    sceneB.background = new THREE.Color(0x8080ff);
-    const matNormal  = new THREE.MeshNormalMaterial();
-    const boardMeshB = new THREE.Mesh(new THREE.BufferGeometry(), matNormal);
-    const slotsMeshB = new THREE.Mesh(new THREE.BufferGeometry(), matSlot);
-    slotsMeshB.position.z = -1;
-    sceneB.add(boardMeshB, slotsMeshB);
+    // Camera — perspective, initial isometric-ish angle
+    const aspect = (container.clientWidth || 1) / (container.clientHeight || 1);
+    const camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 10000);
 
-    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -999999, 999999);
+    const setCamera = (bw, bh) => {
+      const cx = bw / 2, cy = bh / 2, cz = BOARD_DEPTH / 2;
+      const dist = Math.max(bw, bh) * 1.8;
+      camera.position.set(cx + dist * 0.7, cy - dist * 0.7, cz + dist * 0.7);
+      camera.lookAt(cx, cy, cz);
+      camera.up.set(0, 0, 1);
+    };
+    setCamera(width, height);
 
-    const rtColor  = new THREE.WebGLRenderTarget(1, 1);
-    const rtNormal = new THREE.WebGLRenderTarget(1, 1);
-    const rtDepth  = new THREE.WebGLRenderTarget(1, 1, {
-      depthBuffer: true,
-      depthTexture: new THREE.DepthTexture(1, 1, THREE.UnsignedShortType),
-    });
+    // ── Orbit controls (mouse + touch) ─────────────────────────────────────
+    const drag = { active: false, x: 0, y: 0 };
+    let spherical = { theta: Math.PI / 4, phi: Math.PI / 3.5 };
+    let radiusMult = 1;
 
-    const quadGeo = new THREE.BufferGeometry();
-    quadGeo.setAttribute('position', new THREE.Float32BufferAttribute(
-      [-1,-1,0, 1,-1,0, -1,1,0, 1,1,0], 3
-    ));
-    quadGeo.setIndex([0,1,2, 1,3,2]);
-    const quadMat = new THREE.RawShaderMaterial({
-      vertexShader: VERT,
-      fragmentShader: FRAG,
-      uniforms: {
-        tColor:  { value: rtColor.texture },
-        tNormal: { value: rtNormal.texture },
-        tDepth:  { value: rtDepth.depthTexture },
-        res:     { value: new THREE.Vector2(1, 1) },
-      },
-      depthTest: false,
-      depthWrite: false,
-    });
-    const sceneQuad = new THREE.Scene();
-    sceneQuad.add(new THREE.Mesh(quadGeo, quadMat));
-    const camQuad = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-
-    // Central resize handler — always reads from stateRef for board dims
-    const applySize = (rw, rh) => {
-      renderer.setSize(rw, rh, false);
-      [rtColor, rtNormal, rtDepth].forEach(rt => rt.setSize(rw, rh));
-      quadMat.uniforms.res.value.set(rw, rh);
-      const s = stateRef.current;
-      updateCamera(camera, s?.boardW ?? width, s?.boardH ?? height, rw, rh);
+    const updateOrbit = (bw, bh) => {
+      const cx = bw / 2, cy = bh / 2, cz = BOARD_DEPTH / 2;
+      const base = Math.max(bw, bh) * 1.8 * radiusMult;
+      const sinPhi = Math.sin(spherical.phi);
+      const cosPhi = Math.cos(spherical.phi);
+      camera.position.set(
+        cx + base * sinPhi * Math.sin(spherical.theta),
+        cy - base * sinPhi * Math.cos(spherical.theta),
+        cz + base * cosPhi
+      );
+      camera.lookAt(cx, cy, cz);
     };
 
+    const onMouseDown = (e) => { drag.active = true; drag.x = e.clientX; drag.y = e.clientY; };
+    const onMouseMove = (e) => {
+      if (!drag.active) return;
+      const dx = (e.clientX - drag.x) * 0.008;
+      const dy = (e.clientY - drag.y) * 0.008;
+      drag.x = e.clientX; drag.y = e.clientY;
+      spherical.theta -= dx;
+      spherical.phi = Math.max(0.1, Math.min(Math.PI / 2.1, spherical.phi + dy));
+      const s = stateRef.current;
+      if (s) updateOrbit(s.boardW, s.boardH);
+    };
+    const onMouseUp = () => { drag.active = false; };
+    const onWheel = (e) => {
+      e.preventDefault();
+      radiusMult = Math.max(0.4, Math.min(3, radiusMult * (e.deltaY > 0 ? 1.1 : 0.9)));
+      const s = stateRef.current;
+      if (s) updateOrbit(s.boardW, s.boardH);
+    };
+
+    // Touch support
+    let lastTouchDist = 0;
+    const onTouchStart = (e) => {
+      if (e.touches.length === 1) {
+        drag.active = true;
+        drag.x = e.touches[0].clientX;
+        drag.y = e.touches[0].clientY;
+      } else if (e.touches.length === 2) {
+        drag.active = false;
+        lastTouchDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+      }
+    };
+    const onTouchMove = (e) => {
+      e.preventDefault();
+      if (e.touches.length === 1 && drag.active) {
+        const dx = (e.touches[0].clientX - drag.x) * 0.012;
+        const dy = (e.touches[0].clientY - drag.y) * 0.012;
+        drag.x = e.touches[0].clientX;
+        drag.y = e.touches[0].clientY;
+        spherical.theta -= dx;
+        spherical.phi = Math.max(0.1, Math.min(Math.PI / 2.1, spherical.phi + dy));
+        const s = stateRef.current;
+        if (s) updateOrbit(s.boardW, s.boardH);
+      } else if (e.touches.length === 2) {
+        const dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        radiusMult = Math.max(0.4, Math.min(3, radiusMult * (lastTouchDist / dist)));
+        lastTouchDist = dist;
+        const s = stateRef.current;
+        if (s) updateOrbit(s.boardW, s.boardH);
+      }
+    };
+    const onTouchEnd = () => { drag.active = false; };
+
+    const el = renderer.domElement;
+    el.addEventListener('mousedown',  onMouseDown);
+    el.addEventListener('mousemove',  onMouseMove);
+    el.addEventListener('mouseup',    onMouseUp);
+    el.addEventListener('mouseleave', onMouseUp);
+    el.addEventListener('wheel',      onWheel,      { passive: false });
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    el.addEventListener('touchmove',  onTouchMove,  { passive: false });
+    el.addEventListener('touchend',   onTouchEnd);
+
+    // ── Resize ─────────────────────────────────────────────────────────────
     const ro = new ResizeObserver(([entry]) => {
       const { width: rw, height: rh } = entry.contentRect;
-      if (rw > 0 && rh > 0) applySize(rw, rh);
+      if (!rw || !rh) return;
+      renderer.setSize(rw, rh);
+      camera.aspect = rw / rh;
+      camera.updateProjectionMatrix();
     });
     ro.observe(container);
 
-    // Also apply synchronously if container already has dimensions (desktop)
-    const iw = container.clientWidth;
-    const ih = container.clientHeight;
-    if (iw > 0 && ih > 0) applySize(iw, ih);
-
+    // ── Render loop ────────────────────────────────────────────────────────
     let animId;
     const animate = () => {
       animId = requestAnimationFrame(animate);
-      renderer.setRenderTarget(rtColor);  renderer.render(sceneA, camera);
-      renderer.setRenderTarget(rtNormal); renderer.render(sceneB, camera);
-      renderer.setRenderTarget(rtDepth);  renderer.render(sceneA, camera);
-      renderer.setRenderTarget(null);     renderer.render(sceneQuad, camQuad);
+      renderer.render(scene, camera);
     };
     animate();
 
     stateRef.current = {
-      renderer, camera, applySize,
-      boardMesh, slotsMesh, boardMeshB, slotsMeshB,
-      boardW: width, boardH: height,
+      renderer, scene, camera, boardMesh, slotsMesh,
+      boardW: width, boardH: height, setCamera, updateOrbit,
     };
 
     return () => {
       cancelAnimationFrame(animId);
       ro.disconnect();
-      rtColor.dispose(); rtNormal.dispose(); rtDepth.dispose();
+      el.removeEventListener('mousedown',  onMouseDown);
+      el.removeEventListener('mousemove',  onMouseMove);
+      el.removeEventListener('mouseup',    onMouseUp);
+      el.removeEventListener('mouseleave', onMouseUp);
+      el.removeEventListener('wheel',      onWheel);
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove',  onTouchMove);
+      el.removeEventListener('touchend',   onTouchEnd);
       renderer.dispose();
+      if (container.contains(el)) container.removeChild(el);
       stateRef.current = null;
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Update geometry when board dims / slots change ─────────────────────────
+  // ── Update geometry ────────────────────────────────────────────────────────
   useEffect(() => {
-    clearTimeout(geomTimerRef.current);
-    geomTimerRef.current = setTimeout(() => {
+    clearTimeout(geomTimer.current);
+    geomTimer.current = setTimeout(() => {
       const s = stateRef.current;
       if (!s) return;
 
       s.boardMesh.geometry.dispose();
       s.slotsMesh.geometry.dispose();
-      s.boardMeshB.geometry.dispose();
 
-      const bg = buildBoardGeo(width, height);
-      const sg = buildSlotsGeo(slots, height) ?? new THREE.BufferGeometry();
-
-      s.boardMesh.geometry  = bg;
-      s.slotsMesh.geometry  = sg;
-      s.boardMeshB.geometry = bg;
-      s.slotsMeshB.geometry = sg;
+      s.boardMesh.geometry = buildBoardGeo(width, height);
+      s.slotsMesh.geometry = buildSlotsGeo(slots, height) ?? new THREE.BufferGeometry();
 
       s.boardW = width;
       s.boardH = height;
-
-      // Re-run applySize with current container dimensions so camera fits new board
-      const container = s.renderer.domElement.parentElement;
-      const rw = container.clientWidth;
-      const rh = container.clientHeight;
-      if (rw > 0 && rh > 0) s.applySize(rw, rh);
+      s.setCamera(width, height);
     }, 150);
-    return () => clearTimeout(geomTimerRef.current);
+    return () => clearTimeout(geomTimer.current);
   }, [width, height, slots]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      style={{ display: 'block', width: '100%', height: '100%' }}
+    <div
+      ref={mountRef}
+      style={{ width: '100%', height: '100%', cursor: 'grab' }}
     />
   );
 }
