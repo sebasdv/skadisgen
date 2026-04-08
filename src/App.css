@@ -203,6 +203,7 @@ body {
   scrollbar-color: var(--dec-border) transparent;
   box-shadow: var(--shadow-card);
   order: 1; /* push to right */
+  min-height: 0;
 }
 
 .panel-section {
@@ -427,4 +428,7 @@ body {
 
   .mobile-fab      { display: flex; }
   .mobile-backdrop { display: block; }
+
+  /* HUD: move above FAB so it doesn't overlap */
+  .dim-overlay { bottom: 5rem; }
 }

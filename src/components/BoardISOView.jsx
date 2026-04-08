@@ -2,11 +2,9 @@ import { useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-const BOARD_DEPTH   = 5;
-const CORNER_R      = 9;
-const BG            = 0xF0F2F5;  // matches --dec-dark-bg
-const ISO_AZIMUTH   = -Math.PI / 4;
-const ISO_ELEVATION = Math.atan(1 / Math.sqrt(2)); // true isometric ~35.26°
+const BOARD_DEPTH = 5;
+const CORNER_R    = 9;
+const BG          = 0xF0F2F5; // matches --dec-dark-bg
 
 const VERT = `
   precision highp float;
@@ -21,7 +19,7 @@ const FRAG = `
   uniform sampler2D tDepth;
   uniform vec2 res;
   vec3 norm(vec2 uv) { return texture2D(tNormal, uv).rgb * 2.0 - 1.0; }
-  float dep(vec2 uv) { return texture2D(tDepth,  uv).r; }
+  float dep(vec2 uv)  { return texture2D(tDepth,  uv).r; }
   void main() {
     vec2 uv = gl_FragCoord.xy / res;
     vec2 p  = 1.0 / res;
@@ -39,8 +37,8 @@ const FRAG = `
     vec3 nGx = -n[0]-2.0*n[3]-n[6] + n[2]+2.0*n[5]+n[8];
     vec3 nGy = -n[0]-2.0*n[1]-n[2] + n[6]+2.0*n[7]+n[8];
     float edgeN = sqrt(dot(nGx,nGx)+dot(nGy,nGy));
-    float edge = step(0.25, max(edgeD * 30.0, edgeN));
-    vec4 color = texture2D(tColor, uv);
+    float edge  = step(0.25, max(edgeD * 30.0, edgeN));
+    vec4 color  = texture2D(tColor, uv);
     gl_FragColor = mix(color, vec4(0.0,0.0,0.0,1.0), edge);
   }
 `;
@@ -83,48 +81,63 @@ function buildSlotsGeo(slots, boardH) {
   return merged;
 }
 
-function positionCamera(camera, target, boardW, boardH) {
-  const dist = Math.max(boardW, boardH) * 2.2;
-  camera.position.set(
-    target.x + dist * Math.sin(ISO_AZIMUTH)   * Math.cos(ISO_ELEVATION),
-    target.y - dist * Math.cos(ISO_AZIMUTH)   * Math.cos(ISO_ELEVATION),
-    target.z + dist * Math.sin(ISO_ELEVATION)
-  );
-  camera.up.set(0, 0, 1);
-  camera.lookAt(target);
-}
+// Isometric camera: 45° azimuth, true isometric elevation (~35.26°)
+// Board is in XY plane, extruded in +Z
+function updateCamera(camera, boardW, boardH, containerW, containerH) {
+  // frustum: fit the board with some padding, correct aspect
+  const aspect = containerW / containerH;
+  const fitW   = boardW * 1.6;
+  const fitH   = boardH * 1.6;
+  // pick the view size that fits both dimensions
+  let vH = fitH;
+  if (fitW / aspect > fitH) vH = fitW / aspect;
+  const vW = vH * aspect;
 
-function setFrustum(camera, boardW, boardH, aspect) {
-  const v = Math.max(boardW, boardH) * 1.5;
-  camera.left = -aspect * v / 2; camera.right =  aspect * v / 2;
-  camera.top  =  v / 2;          camera.bottom = -v / 2;
-  camera.near = -999999;         camera.far   =  999999;
+  camera.left   = -vW / 2;
+  camera.right  =  vW / 2;
+  camera.top    =  vH / 2;
+  camera.bottom = -vH / 2;
+  camera.near   = -999999;
+  camera.far    =  999999;
+
+  // position: true isometric angles (120° apart on each axis)
+  const cx = boardW / 2;
+  const cy = boardH / 2;
+  const cz = BOARD_DEPTH / 2;
+  const dist = Math.max(boardW, boardH) * 2.5;
+  // ISO: camera comes from front-right-top
+  camera.position.set(cx + dist, cy - dist, cz + dist);
+  camera.up.set(0, 0, 1);
+  camera.lookAt(cx, cy, cz);
   camera.updateProjectionMatrix();
 }
 
 export default function BoardISOView({ width, height, slots }) {
-  const canvasRef = useRef(null);
-  const stateRef  = useRef(null);
+  const canvasRef   = useRef(null);
+  const stateRef    = useRef(null);
+  const geomTimerRef = useRef(null);
 
+  // ── Init renderer (runs once) ──────────────────────────────────────────────
   useEffect(() => {
-    const canvas = canvasRef.current;
+    const canvas    = canvasRef.current;
     const container = canvas.parentElement;
 
-    // Use 1x1 placeholder — ResizeObserver will set real size before first visible frame
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(1, 1, false);
 
-    const sceneA = new THREE.Scene();
+    // Scene A: color pass (board white, slots bg-colored)
+    const sceneA   = new THREE.Scene();
     sceneA.background = new THREE.Color(BG);
-    const matBoard  = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const matSlot   = new THREE.MeshBasicMaterial({ color: BG });
-    const boardMesh = new THREE.Mesh(new THREE.BufferGeometry(), matBoard);
-    const slotsMesh = new THREE.Mesh(new THREE.BufferGeometry(), matSlot);
+    const matBoard = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const matSlot  = new THREE.MeshBasicMaterial({ color: BG });
+    const boardMesh  = new THREE.Mesh(new THREE.BufferGeometry(), matBoard);
+    const slotsMesh  = new THREE.Mesh(new THREE.BufferGeometry(), matSlot);
     slotsMesh.position.z = -1;
     sceneA.add(boardMesh, slotsMesh);
 
-    const sceneB = new THREE.Scene();
+    // Scene B: normal pass (for edge detection)
+    const sceneB    = new THREE.Scene();
     sceneB.background = new THREE.Color(0x8080ff);
     const matNormal  = new THREE.MeshNormalMaterial();
     const boardMeshB = new THREE.Mesh(new THREE.BufferGeometry(), matNormal);
@@ -132,8 +145,7 @@ export default function BoardISOView({ width, height, slots }) {
     slotsMeshB.position.z = -1;
     sceneB.add(boardMeshB, slotsMeshB);
 
-    const target = new THREE.Vector3(width/2, height/2, BOARD_DEPTH/2);
-    const camera = new THREE.OrthographicCamera(-1,1,1,-1,-999999,999999);
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -999999, 999999);
 
     const rtColor  = new THREE.WebGLRenderTarget(1, 1);
     const rtNormal = new THREE.WebGLRenderTarget(1, 1);
@@ -144,9 +156,9 @@ export default function BoardISOView({ width, height, slots }) {
 
     const quadGeo = new THREE.BufferGeometry();
     quadGeo.setAttribute('position', new THREE.Float32BufferAttribute(
-      [-1,-1,0,  1,-1,0,  -1,1,0,  1,1,0], 3
+      [-1,-1,0, 1,-1,0, -1,1,0, 1,1,0], 3
     ));
-    quadGeo.setIndex([0,1,2,  1,3,2]);
+    quadGeo.setIndex([0,1,2, 1,3,2]);
     const quadMat = new THREE.RawShaderMaterial({
       vertexShader: VERT,
       fragmentShader: FRAG,
@@ -159,50 +171,42 @@ export default function BoardISOView({ width, height, slots }) {
       depthTest: false,
       depthWrite: false,
     });
-    const quad = new THREE.Mesh(quadGeo, quadMat);
     const sceneQuad = new THREE.Scene();
-    sceneQuad.add(quad);
-    const camQuad = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+    sceneQuad.add(new THREE.Mesh(quadGeo, quadMat));
+    const camQuad = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
+    // Central resize handler — always reads from stateRef for board dims
     const applySize = (rw, rh) => {
       renderer.setSize(rw, rh, false);
       [rtColor, rtNormal, rtDepth].forEach(rt => rt.setSize(rw, rh));
       quadMat.uniforms.res.value.set(rw, rh);
       const s = stateRef.current;
-      const bw = s?.boardW ?? width;
-      const bh = s?.boardH ?? height;
-      setFrustum(camera, bw, bh, rw / rh);
-      positionCamera(camera, new THREE.Vector3(bw/2, bh/2, BOARD_DEPTH/2), bw, bh);
+      updateCamera(camera, s?.boardW ?? width, s?.boardH ?? height, rw, rh);
     };
-
-    // Apply immediately if container already has size (desktop), else RO will catch it
-    const initW = container.clientWidth;
-    const initH = container.clientHeight;
-    if (initW > 0 && initH > 0) applySize(initW, initH);
 
     const ro = new ResizeObserver(([entry]) => {
       const { width: rw, height: rh } = entry.contentRect;
-      if (!rw || !rh) return;
-      applySize(rw, rh);
+      if (rw > 0 && rh > 0) applySize(rw, rh);
     });
     ro.observe(container);
+
+    // Also apply synchronously if container already has dimensions (desktop)
+    const iw = container.clientWidth;
+    const ih = container.clientHeight;
+    if (iw > 0 && ih > 0) applySize(iw, ih);
 
     let animId;
     const animate = () => {
       animId = requestAnimationFrame(animate);
-      renderer.setRenderTarget(rtColor);
-      renderer.render(sceneA, camera);
-      renderer.setRenderTarget(rtNormal);
-      renderer.render(sceneB, camera);
-      renderer.setRenderTarget(rtDepth);
-      renderer.render(sceneA, camera);
-      renderer.setRenderTarget(null);
-      renderer.render(sceneQuad, camQuad);
+      renderer.setRenderTarget(rtColor);  renderer.render(sceneA, camera);
+      renderer.setRenderTarget(rtNormal); renderer.render(sceneB, camera);
+      renderer.setRenderTarget(rtDepth);  renderer.render(sceneA, camera);
+      renderer.setRenderTarget(null);     renderer.render(sceneQuad, camQuad);
     };
     animate();
 
     stateRef.current = {
-      renderer, camera, target,
+      renderer, camera, applySize,
       boardMesh, slotsMesh, boardMeshB, slotsMeshB,
       boardW: width, boardH: height,
     };
@@ -216,8 +220,10 @@ export default function BoardISOView({ width, height, slots }) {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Update geometry when board dims / slots change ─────────────────────────
   useEffect(() => {
-    const id = setTimeout(() => {
+    clearTimeout(geomTimerRef.current);
+    geomTimerRef.current = setTimeout(() => {
       const s = stateRef.current;
       if (!s) return;
 
@@ -233,15 +239,16 @@ export default function BoardISOView({ width, height, slots }) {
       s.boardMeshB.geometry = bg;
       s.slotsMeshB.geometry = sg;
 
-      s.target.set(width/2, height/2, BOARD_DEPTH/2);
-      positionCamera(s.camera, s.target, width, height);
-      setFrustum(s.camera, width, height,
-        s.renderer.domElement.clientWidth / s.renderer.domElement.clientHeight);
-
       s.boardW = width;
       s.boardH = height;
+
+      // Re-run applySize with current container dimensions so camera fits new board
+      const container = s.renderer.domElement.parentElement;
+      const rw = container.clientWidth;
+      const rh = container.clientHeight;
+      if (rw > 0 && rh > 0) s.applySize(rw, rh);
     }, 150);
-    return () => clearTimeout(id);
+    return () => clearTimeout(geomTimerRef.current);
   }, [width, height, slots]);
 
   return (
