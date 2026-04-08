@@ -59,6 +59,25 @@ body {
   align-items: center;
   gap: 0.5rem;
 }
+.lang-toggle {
+  margin-left: auto;
+  background: transparent;
+  border: 1.5px solid var(--dec-border);
+  border-radius: 4px;
+  color: var(--dec-text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  cursor: pointer;
+  letter-spacing: 0.06em;
+  transition: border-color 0.15s, color 0.15s;
+}
+.lang-toggle:hover {
+  border-color: var(--dec-blue-primary);
+  color: var(--dec-blue-primary);
+}
+
 .panel-logo span {
   background: var(--dec-orange-safety);
   color: white;

@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { downloadDXF } from '../core/dxfExporter';
+import { useLang } from '../LangContext';
 
 export default function ExportButton({ slots, width, height }) {
   const [confirmed, setConfirmed] = useState(false);
+  const { t } = useLang();
 
   const handleClick = () => {
     downloadDXF(slots, width, height);
@@ -16,7 +18,7 @@ export default function ExportButton({ slots, width, height }) {
       onClick={handleClick}
       disabled={slots.length === 0}
     >
-      {confirmed ? 'Downloaded ✓' : 'Export DXF'}
+      {confirmed ? t.downloaded : t.exportBtn}
     </button>
   );
 }

@@ -1,0 +1,26 @@
+export const translations = {
+  en: {
+    dimensions: 'Dimensions',
+    width:       'Width (mm)',
+    height:      'Height (mm)',
+    info:        'Info',
+    totalSlots:  'Total slots',
+    cols:        'Cols A / B',
+    rows:        'Rows A / B',
+    export:      'Export',
+    exportBtn:   'Export DXF',
+    downloaded:  'Downloaded ✓',
+  },
+  es: {
+    dimensions: 'Dimensiones',
+    width:       'Ancho (mm)',
+    height:      'Alto (mm)',
+    info:        'Información',
+    totalSlots:  'Total ranuras',
+    cols:        'Cols A / B',
+    rows:        'Filas A / B',
+    export:      'Exportar',
+    exportBtn:   'Exportar DXF',
+    downloaded:  'Descargado ✓',
+  },
+};
