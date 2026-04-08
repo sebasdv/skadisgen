@@ -1,79 +1,49 @@
 import { useRef, useEffect } from 'react';
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { ADDITION, SUBTRACTION, Evaluator, Brush } from 'three-bvh-csg';
 
 const BOARD_DEPTH = 5;
 const CORNER_R    = 9;
 const BG          = 0xF0F2F5;
 
-// ── Geometry builders ──────────────────────────────────────────────────────
-
-function buildBoardShape(w, h) {
+// Build board shape with slot holes punched in natively by Three.js
+// This is O(n) geometry — no boolean algebra, just vertices
+function buildBoardShape(w, h, slots) {
   const r = CORNER_R;
-  const shape = new THREE.Shape();
-  shape.moveTo(r, 0);
-  shape.lineTo(w - r, 0);
-  shape.absarc(w-r, r,   r, -Math.PI/2, 0,           false);
-  shape.lineTo(w, h - r);
-  shape.absarc(w-r, h-r, r,  0,          Math.PI/2,   false);
-  shape.lineTo(r, h);
-  shape.absarc(r,   h-r, r,  Math.PI/2,  Math.PI,     false);
-  shape.lineTo(0, r);
-  shape.absarc(r,   r,   r,  Math.PI,    Math.PI*1.5, false);
-  return shape;
-}
+  const outline = new THREE.Shape();
+  outline.moveTo(r, 0);
+  outline.lineTo(w - r, 0);
+  outline.absarc(w-r, r,   r, -Math.PI/2, 0,           false);
+  outline.lineTo(w, h - r);
+  outline.absarc(w-r, h-r, r,  0,          Math.PI/2,   false);
+  outline.lineTo(r, h);
+  outline.absarc(r,   h-r, r,  Math.PI/2,  Math.PI,     false);
+  outline.lineTo(0, r);
+  outline.absarc(r,   r,   r,  Math.PI,    Math.PI*1.5, false);
 
-function buildSlotShapes(slots, boardH) {
+  // Each slot is a hole path added to the shape
   const rx = 2.5, lineH = 5.0;
-  return slots.map(({ x, y, w, h }) => {
-    const cx = x + w / 2;
-    const cy = boardH - (y + h / 2);
-    const shape = new THREE.Shape();
-    shape.moveTo(cx + rx, cy - lineH);
-    shape.absarc(cx, cy - lineH, rx, 0,       Math.PI,   true);
-    shape.lineTo(cx - rx, cy + lineH);
-    shape.absarc(cx, cy + lineH, rx, Math.PI, Math.PI*2, true);
-    return shape;
-  });
-}
-
-// Build board geometry with slots subtracted (true CSG boolean)
-// Runs off main thread via setTimeout in the caller — may take ~100-400ms for many slots
-function buildBoardWithHoles(w, h, slots) {
-  const evaluator = new Evaluator();
-
-  // Board brush
-  const boardGeo = new THREE.ExtrudeGeometry(buildBoardShape(w, h), {
-    depth: BOARD_DEPTH, bevelEnabled: false,
-  });
-  const boardBrush = new Brush(boardGeo);
-  boardBrush.updateMatrixWorld();
-
-  if (!slots.length) {
-    boardGeo.computeVertexNormals();
-    return boardGeo;
+  for (const { x, y, w: sw, h: sh } of slots) {
+    const cx = x + sw / 2;
+    const cy = h - (y + sh / 2);
+    const hole = new THREE.Path();
+    hole.moveTo(cx + rx, cy - lineH);
+    hole.absarc(cx, cy - lineH, rx, 0,       Math.PI,   true);
+    hole.lineTo(cx - rx, cy + lineH);
+    hole.absarc(cx, cy + lineH, rx, Math.PI, Math.PI*2, true);
+    outline.holes.push(hole);
   }
 
-  // All slot brushes merged into one cutter
-  const slotShapes = buildSlotShapes(slots, h);
-  const slotGeos = slotShapes.map(shape =>
-    new THREE.ExtrudeGeometry(shape, { depth: BOARD_DEPTH + 2, bevelEnabled: false })
-  );
-  const mergedSlotGeo = mergeGeometries(slotGeos);
-  slotGeos.forEach(g => g.dispose());
+  return outline;
+}
 
-  const slotBrush = new Brush(mergedSlotGeo);
-  slotBrush.position.z = -1; // start 1mm above top face so subtraction is clean
-  slotBrush.updateMatrixWorld();
-
-  const result = evaluator.evaluate(boardBrush, slotBrush, SUBTRACTION);
-  result.geometry.computeVertexNormals();
-
-  boardGeo.dispose();
-  mergedSlotGeo.dispose();
-
-  return result.geometry;
+function buildBoardGeo(w, h, slots) {
+  const shape = buildBoardShape(w, h, slots);
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: BOARD_DEPTH,
+    bevelEnabled: false,
+  });
+  geo.computeVertexNormals();
+  return geo;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -103,7 +73,7 @@ export default function BoardISOView({ width, height, slots }) {
     dir2.position.set(-1, -0.5, 1);
     scene.add(dir2);
 
-    const matBoard = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 40 });
+    const matBoard = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 40, side: THREE.DoubleSide });
     const boardMesh = new THREE.Mesh(new THREE.BufferGeometry(), matBoard);
     scene.add(boardMesh);
 
@@ -234,10 +204,8 @@ export default function BoardISOView({ width, height, slots }) {
     geomTimer.current = setTimeout(() => {
       const s = stateRef.current;
       if (!s) return;
-
       s.boardMesh.geometry.dispose();
-      s.boardMesh.geometry = buildBoardWithHoles(width, height, slots);
-
+      s.boardMesh.geometry = buildBoardGeo(width, height, slots);
       s.boardW = width;
       s.boardH = height;
       s.setCamera(width, height);
