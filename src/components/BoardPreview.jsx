@@ -121,6 +121,23 @@ export default function BoardPreview({ width, height, slots }) {
         ? <BoardISOView width={width} height={height} slots={slots} />
         : <BoardPreviewSVG width={width} height={height} slots={slots} />
       }
+      <div className="dim-overlay">
+        <span className="dim-label">Board</span>
+        <div className="dim-row">
+          <div className="dim-item">
+            <span className="dim-label">Width</span>
+            <span className="dim-value">{width} mm</span>
+          </div>
+          <div className="dim-item">
+            <span className="dim-label">Height</span>
+            <span className="dim-value">{height} mm</span>
+          </div>
+          <div className="dim-item">
+            <span className="dim-label">Thickness</span>
+            <span className="dim-value">5 mm</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

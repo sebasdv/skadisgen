@@ -37,7 +37,7 @@ function HelpModal({ onClose }) {
             {t.helpGithub} →
           </a>
         </div>
-        <button className="modal-close-btn" onClick={onClose}>{t.helpClose}</button>
+        <button className="btn-primary-full" onClick={onClose}>{t.helpClose}</button>
       </div>
     </div>
   );
@@ -52,11 +52,11 @@ export default function Header() {
       <header className="app-header">
         <div className="header-brand">SKADIS<span>GEN</span></div>
         <div className="header-actions">
-          <button className="lang-toggle" onClick={toggle} title="Toggle language">
+          <button className="header-btn" onClick={toggle} title="Toggle language">
             {lang === 'en' ? 'ES' : 'EN'}
           </button>
-          <button className="help-btn" onClick={() => setHelpOpen(true)} title={t.helpTitle}>
-            ?
+          <button className="header-btn" onClick={() => setHelpOpen(true)} title={t.helpTitle}>
+            {t.helpBtn}
           </button>
         </div>
       </header>

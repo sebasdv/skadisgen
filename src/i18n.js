@@ -18,6 +18,7 @@ export const translations = {
     helpTip2:         'Exported DXF is compatible with Rhino, Illustrator, RDWorks and LightBurn.',
     helpTip3:         'DXF layers: CONTORNO (board outline) and RANURAS (slots).',
     helpGithub:       'View source on GitHub',
+    helpBtn:          'Help',
   },
   es: {
     dimensions:       'Dimensiones',
@@ -38,5 +39,6 @@ export const translations = {
     helpTip2:         'El DXF exportado es compatible con Rhino, Illustrator, RDWorks y LightBurn.',
     helpTip3:         'Capas DXF: CONTORNO (contorno del tablero) y RANURAS (ranuras).',
     helpGithub:       'Ver código en GitHub',
+    helpBtn:          'Ayuda',
   },
 };
