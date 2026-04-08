@@ -51,13 +51,13 @@ function buildSlotCapGeo(slots, boardH) {
   return merged;
 }
 
-// Hole walls — extruded inward (negative Z direction = into the board)
+// Hole walls — extruded inward, deeper than board for visual effect
 function buildSlotWallGeo(slots, boardH) {
   if (!slots.length) return null;
   const shapes = buildSlotShapes(slots, boardH);
   const geos = shapes.map(shape => {
     const geo = new THREE.ExtrudeGeometry(shape, {
-      depth: BOARD_DEPTH,
+      depth: BOARD_DEPTH * 6, // deep tunnel for convincing thru-hole look
       bevelEnabled: false,
     });
     geo.computeVertexNormals();
@@ -107,10 +107,10 @@ export default function BoardISOView({ width, height, slots }) {
       stencilRef:   1,
     });
 
-    // Pass 3: hole walls — dark inner tube, always draw (stencil cleared)
+    // Pass 3: hole walls — very dark inner tube for deep thru-hole look
     const matWall = new THREE.MeshPhongMaterial({
-      color:     0x888888,
-      shininess: 5,
+      color:     0x1a1a1a,
+      shininess: 0,
       side:      THREE.BackSide, // show inner faces of the extrusion
     });
 
@@ -142,10 +142,7 @@ export default function BoardISOView({ width, height, slots }) {
     sceneBoard.add(boardMesh);
 
     const sceneWall = new THREE.Scene();
-    sceneWall.add(new THREE.AmbientLight(0xffffff, 0.3));
-    const dir3 = new THREE.DirectionalLight(0xffffff, 0.6);
-    dir3.position.set(0, 0, -1);
-    sceneWall.add(dir3);
+    sceneWall.add(new THREE.AmbientLight(0x111111, 1.0)); // near-black, no directional light
     sceneWall.add(wallMesh);
 
     // ── Camera ─────────────────────────────────────────────────────────────
