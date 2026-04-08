@@ -4,7 +4,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 
 const BOARD_DEPTH   = 5;
 const CORNER_R      = 9;
-const BG            = 0xffffff;
+const BG            = 0xF0F2F5;  // matches --dec-dark-bg
 const ISO_AZIMUTH   = -Math.PI / 4;
 const ISO_ELEVATION = Math.atan(1 / Math.sqrt(2)); // true isometric ~35.26°
 
@@ -173,7 +173,10 @@ export default function BoardISOView({ width, height, slots }) {
       [rtColor, rtNormal, rtDepth].forEach(rt => rt.setSize(rw, rh));
       quadMat.uniforms.res.value.set(rw, rh);
       const s = stateRef.current;
-      setFrustum(camera, s?.boardW ?? width, s?.boardH ?? height, rw/rh);
+      const bw = s?.boardW ?? width;
+      const bh = s?.boardH ?? height;
+      setFrustum(camera, bw, bh, rw/rh);
+      positionCamera(camera, new THREE.Vector3(bw/2, bh/2, BOARD_DEPTH/2), bw, bh);
     });
     ro.observe(canvas.parentElement);
 
