@@ -7,7 +7,7 @@ export default function ControlPanel({ width, height, setWidth, setHeight, slots
   const [localHeight, setLocalHeight] = useState(String(height));
   const widthInputRef = useRef(null);
   const heightInputRef = useRef(null);
-  const { lang, t, toggle } = useLang();
+  const { t } = useLang();
 
   useEffect(() => {
     if (document.activeElement !== widthInputRef.current) setLocalWidth(String(width));
@@ -22,13 +22,6 @@ export default function ControlPanel({ width, height, setWidth, setHeight, slots
 
   return (
     <aside className={`control-panel${panelOpen ? ' is-open' : ''}`}>
-      <div className="panel-logo">
-        SKADIS<span>GEN</span>
-        <button className="lang-toggle" onClick={toggle} title="Toggle language">
-          {lang === 'en' ? 'ES' : 'EN'}
-        </button>
-      </div>
-
       <section className="panel-section">
         <h2 className="section-title">{t.dimensions}</h2>
         <label className="field">

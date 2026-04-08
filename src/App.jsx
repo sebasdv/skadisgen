@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import './App.css';
+import Header from './components/Header';
 import ControlPanel from './components/ControlPanel';
 import BoardPreview from './components/BoardPreview';
 import { useBoardState } from './hooks/useBoardState';
@@ -10,17 +11,20 @@ export default function App() {
 
   return (
     <div className="app">
-      <ControlPanel
-        width={width}
-        height={height}
-        setWidth={setWidth}
-        setHeight={setHeight}
-        slots={slots}
-        stats={stats}
-        panelOpen={panelOpen}
-        onClose={() => setPanelOpen(false)}
-      />
-      <BoardPreview width={width} height={height} slots={slots} />
+      <Header />
+      <div className="app-body">
+        <ControlPanel
+          width={width}
+          height={height}
+          setWidth={setWidth}
+          setHeight={setHeight}
+          slots={slots}
+          stats={stats}
+          panelOpen={panelOpen}
+          onClose={() => setPanelOpen(false)}
+        />
+        <BoardPreview width={width} height={height} slots={slots} />
+      </div>
 
       {/* Mobile FAB */}
       <button
