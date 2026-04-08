@@ -108,12 +108,12 @@ export default function BoardISOView({ width, height, slots }) {
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    const cw = canvas.clientWidth  || 800;
-    const ch = canvas.clientHeight || 600;
+    const container = canvas.parentElement;
 
+    // Use 1x1 placeholder — ResizeObserver will set real size before first visible frame
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(cw, ch, false);
+    renderer.setSize(1, 1, false);
 
     const sceneA = new THREE.Scene();
     sceneA.background = new THREE.Color(BG);
@@ -134,14 +134,12 @@ export default function BoardISOView({ width, height, slots }) {
 
     const target = new THREE.Vector3(width/2, height/2, BOARD_DEPTH/2);
     const camera = new THREE.OrthographicCamera(-1,1,1,-1,-999999,999999);
-    setFrustum(camera, width, height, cw/ch);
-    positionCamera(camera, target, width, height);
 
-    const rtColor  = new THREE.WebGLRenderTarget(cw, ch);
-    const rtNormal = new THREE.WebGLRenderTarget(cw, ch);
-    const rtDepth  = new THREE.WebGLRenderTarget(cw, ch, {
+    const rtColor  = new THREE.WebGLRenderTarget(1, 1);
+    const rtNormal = new THREE.WebGLRenderTarget(1, 1);
+    const rtDepth  = new THREE.WebGLRenderTarget(1, 1, {
       depthBuffer: true,
-      depthTexture: new THREE.DepthTexture(cw, ch, THREE.UnsignedShortType),
+      depthTexture: new THREE.DepthTexture(1, 1, THREE.UnsignedShortType),
     });
 
     const quadGeo = new THREE.BufferGeometry();
@@ -156,7 +154,7 @@ export default function BoardISOView({ width, height, slots }) {
         tColor:  { value: rtColor.texture },
         tNormal: { value: rtNormal.texture },
         tDepth:  { value: rtDepth.depthTexture },
-        res:     { value: new THREE.Vector2(cw, ch) },
+        res:     { value: new THREE.Vector2(1, 1) },
       },
       depthTest: false,
       depthWrite: false,
@@ -166,19 +164,28 @@ export default function BoardISOView({ width, height, slots }) {
     sceneQuad.add(quad);
     const camQuad = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
 
-    const ro = new ResizeObserver(([entry]) => {
-      const { width: rw, height: rh } = entry.contentRect;
-      if (!rw || !rh) return;
+    const applySize = (rw, rh) => {
       renderer.setSize(rw, rh, false);
       [rtColor, rtNormal, rtDepth].forEach(rt => rt.setSize(rw, rh));
       quadMat.uniforms.res.value.set(rw, rh);
       const s = stateRef.current;
       const bw = s?.boardW ?? width;
       const bh = s?.boardH ?? height;
-      setFrustum(camera, bw, bh, rw/rh);
+      setFrustum(camera, bw, bh, rw / rh);
       positionCamera(camera, new THREE.Vector3(bw/2, bh/2, BOARD_DEPTH/2), bw, bh);
+    };
+
+    // Apply immediately if container already has size (desktop), else RO will catch it
+    const initW = container.clientWidth;
+    const initH = container.clientHeight;
+    if (initW > 0 && initH > 0) applySize(initW, initH);
+
+    const ro = new ResizeObserver(([entry]) => {
+      const { width: rw, height: rh } = entry.contentRect;
+      if (!rw || !rh) return;
+      applySize(rw, rh);
     });
-    ro.observe(canvas.parentElement);
+    ro.observe(container);
 
     let animId;
     const animate = () => {
