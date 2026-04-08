@@ -1,15 +1,15 @@
 import { useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { ADDITION, SUBTRACTION, Evaluator, Brush } from 'three-bvh-csg';
 
 const BOARD_DEPTH = 5;
 const CORNER_R    = 9;
 const BG          = 0xF0F2F5;
-const BG_COLOR    = new THREE.Color(BG);
 
 // ── Geometry builders ──────────────────────────────────────────────────────
 
-function buildBoardGeo(w, h) {
+function buildBoardShape(w, h) {
   const r = CORNER_R;
   const shape = new THREE.Shape();
   shape.moveTo(r, 0);
@@ -21,12 +21,9 @@ function buildBoardGeo(w, h) {
   shape.absarc(r,   h-r, r,  Math.PI/2,  Math.PI,     false);
   shape.lineTo(0, r);
   shape.absarc(r,   r,   r,  Math.PI,    Math.PI*1.5, false);
-  const geo = new THREE.ExtrudeGeometry(shape, { depth: BOARD_DEPTH, bevelEnabled: false });
-  geo.computeVertexNormals();
-  return geo;
+  return shape;
 }
 
-// Slot shapes — used for stencil mask AND for hole walls
 function buildSlotShapes(slots, boardH) {
   const rx = 2.5, lineH = 5.0;
   return slots.map(({ x, y, w, h }) => {
@@ -41,35 +38,45 @@ function buildSlotShapes(slots, boardH) {
   });
 }
 
-// Flat caps at Z=BOARD_DEPTH (top face, for stencil write) — no extrusion
-function buildSlotCapGeo(slots, boardH) {
-  if (!slots.length) return null;
-  const shapes = buildSlotShapes(slots, boardH);
-  const geos = shapes.map(shape => new THREE.ShapeGeometry(shape));
-  const merged = mergeGeometries(geos);
-  geos.forEach(g => g.dispose());
-  return merged;
-}
+// Build board geometry with slots subtracted (true CSG boolean)
+// Runs off main thread via setTimeout in the caller — may take ~100-400ms for many slots
+function buildBoardWithHoles(w, h, slots) {
+  const evaluator = new Evaluator();
 
-// Hole walls — extruded inward, deeper than board for visual effect
-function buildSlotWallGeo(slots, boardH) {
-  if (!slots.length) return null;
-  const shapes = buildSlotShapes(slots, boardH);
-  const geos = shapes.map(shape => {
-    const geo = new THREE.ExtrudeGeometry(shape, {
-      depth: BOARD_DEPTH * 6, // deep tunnel for convincing thru-hole look
-      bevelEnabled: false,
-    });
-    geo.computeVertexNormals();
-    return geo;
+  // Board brush
+  const boardGeo = new THREE.ExtrudeGeometry(buildBoardShape(w, h), {
+    depth: BOARD_DEPTH, bevelEnabled: false,
   });
-  const merged = mergeGeometries(geos);
-  geos.forEach(g => g.dispose());
-  merged.computeVertexNormals();
-  return merged;
+  const boardBrush = new Brush(boardGeo);
+  boardBrush.updateMatrixWorld();
+
+  if (!slots.length) {
+    boardGeo.computeVertexNormals();
+    return boardGeo;
+  }
+
+  // All slot brushes merged into one cutter
+  const slotShapes = buildSlotShapes(slots, h);
+  const slotGeos = slotShapes.map(shape =>
+    new THREE.ExtrudeGeometry(shape, { depth: BOARD_DEPTH + 2, bevelEnabled: false })
+  );
+  const mergedSlotGeo = mergeGeometries(slotGeos);
+  slotGeos.forEach(g => g.dispose());
+
+  const slotBrush = new Brush(mergedSlotGeo);
+  slotBrush.position.z = -1; // start 1mm above top face so subtraction is clean
+  slotBrush.updateMatrixWorld();
+
+  const result = evaluator.evaluate(boardBrush, slotBrush, SUBTRACTION);
+  result.geometry.computeVertexNormals();
+
+  boardGeo.dispose();
+  mergedSlotGeo.dispose();
+
+  return result.geometry;
 }
 
-// ── Main component ─────────────────────────────────────────────────────────
+// ── Component ──────────────────────────────────────────────────────────────
 
 export default function BoardISOView({ width, height, slots }) {
   const mountRef  = useRef(null);
@@ -79,73 +86,28 @@ export default function BoardISOView({ width, height, slots }) {
   useEffect(() => {
     const container = mountRef.current;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(BG);
-    renderer.autoClear = false; // we manage clear manually for stencil passes
     renderer.setSize(container.clientWidth || 1, container.clientHeight || 1);
     container.appendChild(renderer.domElement);
 
-    // ── Materials ──────────────────────────────────────────────────────────
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(BG);
 
-    // Pass 1: write stencil=1 where slots are (top face at Z=BOARD_DEPTH)
-    const matStencil = new THREE.MeshBasicMaterial({
-      colorWrite:   false,
-      depthWrite:   false,
-      stencilWrite: true,
-      stencilFunc:  THREE.AlwaysStencilFunc,
-      stencilRef:   1,
-      stencilZPass: THREE.ReplaceStencilOp,
-    });
-
-    // Pass 2: board — only draw where stencil != 1 (skip hole pixels)
-    const matBoard = new THREE.MeshPhongMaterial({
-      color:        0xffffff,
-      shininess:    40,
-      stencilWrite: false,
-      stencilFunc:  THREE.NotEqualStencilFunc,
-      stencilRef:   1,
-    });
-
-    // Pass 3: hole walls — very dark inner tube for deep thru-hole look
-    const matWall = new THREE.MeshPhongMaterial({
-      color:     0x1a1a1a,
-      shininess: 0,
-      side:      THREE.BackSide, // show inner faces of the extrusion
-    });
-
-    // ── Meshes ─────────────────────────────────────────────────────────────
-
-    const stencilMesh = new THREE.Mesh(new THREE.BufferGeometry(), matStencil);
-    stencilMesh.position.z = BOARD_DEPTH; // sit on top face of board
-
-    const boardMesh   = new THREE.Mesh(new THREE.BufferGeometry(), matBoard);
-
-    const wallMesh    = new THREE.Mesh(new THREE.BufferGeometry(), matWall);
-    wallMesh.position.z = BOARD_DEPTH; // extrude downward (negative Z relative)
-    // flip so extrusion goes into the board
-    wallMesh.scale.z = -1;
-
-    // ── Scenes per pass ────────────────────────────────────────────────────
-    const sceneStencil = new THREE.Scene();
-    sceneStencil.add(stencilMesh);
-
-    const sceneBoard = new THREE.Scene();
-    sceneBoard.background = BG_COLOR;
-    sceneBoard.add(new THREE.AmbientLight(0xffffff, 0.55));
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
     const dir1 = new THREE.DirectionalLight(0xffffff, 0.9);
     dir1.position.set(1, 1, 2);
-    sceneBoard.add(dir1);
+    scene.add(dir1);
     const dir2 = new THREE.DirectionalLight(0xffffff, 0.3);
     dir2.position.set(-1, -0.5, 1);
-    sceneBoard.add(dir2);
-    sceneBoard.add(boardMesh);
+    scene.add(dir2);
 
-    const sceneWall = new THREE.Scene();
-    sceneWall.add(new THREE.AmbientLight(0x111111, 1.0)); // near-black, no directional light
-    sceneWall.add(wallMesh);
+    const matBoard = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 40 });
+    const boardMesh = new THREE.Mesh(new THREE.BufferGeometry(), matBoard);
+    scene.add(boardMesh);
 
-    // ── Camera ─────────────────────────────────────────────────────────────
+    // Camera
     const aspect = (container.clientWidth || 1) / (container.clientHeight || 1);
     const camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 10000);
 
@@ -158,7 +120,7 @@ export default function BoardISOView({ width, height, slots }) {
     };
     setCamera(width, height);
 
-    // ── Orbit controls ─────────────────────────────────────────────────────
+    // Orbit
     const drag = { active: false, x: 0, y: 0 };
     let spherical = { theta: Math.PI / 4, phi: Math.PI / 3.5 };
     let radiusMult = 1;
@@ -228,7 +190,6 @@ export default function BoardISOView({ width, height, slots }) {
     el.addEventListener('touchmove',  onTouchMove,  { passive: false });
     el.addEventListener('touchend',   onTouchEnd);
 
-    // ── Resize ─────────────────────────────────────────────────────────────
     const ro = new ResizeObserver(([entry]) => {
       const { width: rw, height: rh } = entry.contentRect;
       if (!rw || !rh) return;
@@ -238,31 +199,15 @@ export default function BoardISOView({ width, height, slots }) {
     });
     ro.observe(container);
 
-    // ── Render loop (3-pass stencil) ───────────────────────────────────────
     let animId;
     const animate = () => {
       animId = requestAnimationFrame(animate);
-
-      // Clear color + depth + stencil
-      renderer.clear(true, true, true);
-
-      // Pass 1 — write stencil mask where slots are
-      renderer.state.buffers.stencil.setTest(true);
-      renderer.state.buffers.stencil.setMask(0xff);
-      renderer.render(sceneStencil, camera);
-
-      // Pass 2 — render board, skip pixels where stencil=1
-      renderer.render(sceneBoard, camera);
-
-      // Pass 3 — render hole walls (inner tube, dark)
-      renderer.state.buffers.stencil.setTest(false);
-      renderer.render(sceneWall, camera);
+      renderer.render(scene, camera);
     };
     animate();
 
     stateRef.current = {
-      renderer, camera,
-      stencilMesh, boardMesh, wallMesh,
+      renderer, camera, boardMesh,
       boardW: width, boardH: height,
       setCamera, updateOrbit,
     };
@@ -284,20 +229,14 @@ export default function BoardISOView({ width, height, slots }) {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Update geometry ────────────────────────────────────────────────────────
   useEffect(() => {
     clearTimeout(geomTimer.current);
     geomTimer.current = setTimeout(() => {
       const s = stateRef.current;
       if (!s) return;
 
-      s.stencilMesh.geometry.dispose();
       s.boardMesh.geometry.dispose();
-      s.wallMesh.geometry.dispose();
-
-      s.stencilMesh.geometry = buildSlotCapGeo(slots, height)  ?? new THREE.BufferGeometry();
-      s.boardMesh.geometry   = buildBoardGeo(width, height);
-      s.wallMesh.geometry    = buildSlotWallGeo(slots, height) ?? new THREE.BufferGeometry();
+      s.boardMesh.geometry = buildBoardWithHoles(width, height, slots);
 
       s.boardW = width;
       s.boardH = height;
