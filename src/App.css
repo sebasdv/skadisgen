@@ -223,3 +223,51 @@ body {
 }
 .view-toggle-btn:hover { color: rgba(0,0,0,0.65); }
 .view-toggle-btn.active { background: #000000; color: #ffffff; }
+
+/* ── Mobile ── */
+.mobile-fab {
+  display: none;
+  position: fixed;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  z-index: 200;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--dec-blue-primary);
+  color: white;
+  border: none;
+  box-shadow: 0 4px 0 var(--dec-blue-dark), 0 20px 25px -5px rgba(0,0,0,0.1);
+  font-size: 22px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s var(--ease-punch);
+}
+.mobile-fab:active { transform: scale(0.92); }
+
+.mobile-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.4);
+  backdrop-filter: blur(2px);
+  z-index: 149;
+}
+
+@media (max-width: 768px) {
+  .control-panel {
+    position: fixed;
+    top: 0;
+    right: -320px;
+    width: 300px;
+    height: 100vh;
+    z-index: 150;
+    box-shadow: -4px 0 24px rgba(0,0,0,0.12);
+    transition: right 0.3s ease;
+  }
+  .control-panel.is-open { right: 0; }
+
+  .mobile-fab    { display: flex; }
+  .mobile-backdrop { display: block; }
+}

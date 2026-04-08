@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import ExportButton from './ExportButton';
 
-export default function ControlPanel({ width, height, setWidth, setHeight, slots, stats }) {
+export default function ControlPanel({ width, height, setWidth, setHeight, slots, stats, panelOpen, onClose }) {
   const [localWidth, setLocalWidth] = useState(String(width));
   const [localHeight, setLocalHeight] = useState(String(height));
   const widthInputRef = useRef(null);
@@ -19,7 +19,7 @@ export default function ControlPanel({ width, height, setWidth, setHeight, slots
   const commitHeight = () => setHeight(localHeight);
 
   return (
-    <aside className="control-panel">
+    <aside className={`control-panel${panelOpen ? ' is-open' : ''}`}>
       <div className="panel-logo">SKADIS<span>GEN</span></div>
 
       <section className="panel-section">
