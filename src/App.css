@@ -31,7 +31,7 @@ body {
 }
 
 .app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-.app-body { display: flex; flex: 1; overflow: hidden; }
+.app-body { display: flex; flex: 1; overflow: hidden; min-height: 0; }
 
 /* ── Header ── */
 .app-header {
@@ -339,6 +339,8 @@ body {
 /* ── Board Preview ── */
 .board-preview {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
   background: #ffffff;
   position: relative;
   overflow: hidden;
@@ -429,10 +431,10 @@ body {
 @media (max-width: 768px) {
   .control-panel {
     position: fixed;
-    top: 0;
+    top: 52px;
     right: -320px;
     width: 300px;
-    height: 100vh;
+    height: calc(100vh - 52px);
     z-index: 150;
     box-shadow: -4px 0 24px rgba(0,0,0,0.12);
     transition: right 0.3s ease;
